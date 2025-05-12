@@ -8,7 +8,15 @@ CITY = "bangalore"
 
 CATEGORIES = [
     "gin",
-    # "rum", "champagne", "vodka", ...
+    "rum",
+    "champagne",
+    "vodka",
+    "ready-to-drink",
+    "beers",
+    "sake",
+    "liqueurs",
+    "brandy",
+    "tequila",
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -148,12 +156,14 @@ def main():
         "description",
         "tasting_notes",
     ]
-    with open("livcheers_detailed_p12.csv", "w", newline="", encoding="utf-8") as f:
+    with open("livcheers_detailed_p13.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_products)
 
-    print(f"\n✅ Done! {len(all_products)} products saved to livcheers_detailed_p12.csv")
+    print(
+        f"\n✅ Done! {len(all_products)} products saved to livcheers_detailed_p13.csv"
+    )
 
 
 if __name__ == "__main__":
