@@ -2,97 +2,94 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 import time
-import re
 
 BASE_URL = "https://www.livcheers.com"
 CITY = "bangalore"
 
 CATEGORIES = [
     "gin",
-    # "rum",
-    # "champagne",
-    # "vodka",
-    # "ready-to-drink",
-    # "beers",
-    # "sake",
-    # "liqueurs",
-    # "brandy",
-    # "tequila",
-    # "sparkling-wine",
-    # "rose-wine",
-    # "red-wine",
-    # "white-wine",
-    # "single-malts",
-    # "world-whisky",
-    # "made-in-india-whisky",
-    # "blended-scotch",
+    "rum",
+    "champagne",
+    "vodka",
+    "ready-to-drink",
+    "beers",
+    "sake",
+    "liqueurs",
+    "brandy",
+    "tequila",
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 
 def fetch_product_details(slug: str) -> dict:
-    """Fetch type, botanicals, description, and tasting notes using precise CSS paths."""
+    """Fetch image_url, botanicals, description, tasting_notes, and type."""
     url = f"{BASE_URL}/{CITY}/liquor/{slug}"
     resp = requests.get(url, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    # --- Type (unchanged) ---
-    type_val = ""
-    tl = soup.find("span", string="Type:")
-    if tl and (sib := tl.find_next_sibling("span")):
-        type_val = sib.get_text(strip=True)
+    # 1) Image URL: /html/body/main/div[1]/div[1]/img
+    image_url = ""
+    img_tag = soup.select_one(
+        "body > main > div:nth-of-type(1) > div:nth-of-type(1) > img"
+    )
+    if img_tag and img_tag.has_attr("src"):
+        image_url = img_tag["src"]
 
-    # --- Botanicals (4th div → fallback to 5th) ---
+    # 2) Botanicals: /html/body/main/div[1]/div[2]/div[5]/div[2]/p
     botanicals = ""
-    for idx in (4, 5):
-        sel = (
-            f"body > main > div:nth-of-type(2) > div:nth-of-type(2) "
-            f"> div:nth-of-type({idx}) > div:nth-of-type(2) > p > span:nth-of-type(2)"
-        )
-        node = soup.select_one(sel)
-        if node and node.get_text(strip=True):
-            botanicals = node.get_text(strip=True)
-            break
-
-    # --- Description (6th div block) ---
-    desc = ""
-    desc_sel = (
-        "body > main > div:nth-of-type(2) > div:nth-of-type(2) "
-        "> div:nth-of-type(6) > p > span:nth-of-type(2)"
+    bot_p = soup.select_one(
+        "body > main > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > p"
     )
-    if (d := soup.select_one(desc_sel)) and d.get_text(strip=True):
-        desc = d.get_text(strip=True)
+    if bot_p:
+        botanicals = bot_p.get_text(strip=True)
 
-    # --- Tasting Notes (7th div block) ---
-    notes = ""
-    notes_sel = (
-        "body > main > div:nth-of-type(2) > div:nth-of-type(2) "
-        "> div:nth-of-type(7) > p > span:nth-of-type(2)"
+    # 3) Description: /html/body/main/div[1]/div[2]/div[6]/p/span[2]
+    description = ""
+    desc_span = soup.select_one(
+        "body > main > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(6) > p > span:nth-of-type(2)"
     )
-    if (n := soup.select_one(notes_sel)) and n.get_text(strip=True):
-        notes = n.get_text(strip=True)
+    if desc_span:
+        description = desc_span.get_text(strip=True)
+
+    # 4) Tasting Notes: /html/body/main/div[1]/div[2]/div[7]/p/span[2]
+    tasting_notes = ""
+    notes_span = soup.select_one(
+        "body > main > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(7) > p > span:nth-of-type(2)"
+    )
+    if notes_span:
+        tasting_notes = notes_span.get_text(strip=True)
+
+    # 5) Type: label “Type:” → next sibling span
+    type_val = ""
+    type_label = soup.find("span", string="Type:")
+    if type_label:
+        sib = type_label.find_next_sibling("span")
+        if sib:
+            type_val = sib.get_text(strip=True)
 
     return {
-        "type": type_val,
+        "image_url": image_url,
         "botanicals": botanicals,
-        "description": desc,
-        "tasting_notes": notes,
+        "description": description,
+        "tasting_notes": tasting_notes,
+        "type": type_val,
     }
 
 
 def scrape_category(cat_slug: str) -> list[dict]:
-    """Scrape overview cards and enrich with detailed fields."""
+    """Scrape the category overview and enrich with detailed page data."""
     url = f"{BASE_URL}/{CITY}/category/{cat_slug}"
     resp = requests.get(url, headers=HEADERS)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
-    items = []
 
-    for card in soup.find_all(
-        "a", href=lambda u: u and u.startswith(f"/{CITY}/liquor/")
-    ):
+    items = []
+    cards = soup.find_all("a", href=lambda u: u and u.startswith(f"/{CITY}/liquor/"))
+
+    for card in cards:
+        # Overview fields
         brand_el = card.find("p", class_=lambda c: c and "text-[#007CF5]" in c)
         name_el = card.find("h3")
         size_el = card.find("p", class_=lambda c: c and "text-[#9FA5A7]" in c)
@@ -108,6 +105,8 @@ def scrape_category(cat_slug: str) -> list[dict]:
 
         name = name_el.get_text(strip=True) if name_el else ""
         slug = card["href"].rstrip("/").split("/")[-1]
+
+        # Fetch detail page data
         details = fetch_product_details(slug)
 
         items.append(
@@ -121,10 +120,7 @@ def scrape_category(cat_slug: str) -> list[dict]:
                 "rating": rating_el.get_text(strip=True) if rating_el else "",
                 "price": price_el.get_text(strip=True) if price_el else "",
                 "compound": compound_el.get_text(strip=True) if compound_el else "",
-                "type": details["type"],
-                "botanicals": details["botanicals"],
-                "description": details["description"],
-                "tasting_notes": details["tasting_notes"],
+                **details,
             }
         )
 
@@ -136,14 +132,14 @@ def main():
     for cat in CATEGORIES:
         print(f"[+] Scraping {cat}…", end=" ")
         try:
-            prods = scrape_category(cat)
-            print(f"found {len(prods)} items")
-            all_products.extend(prods)
+            batch = scrape_category(cat)
+            print(f"found {len(batch)} items")
+            all_products.extend(batch)
         except Exception as e:
             print("error:", e)
         time.sleep(1)
 
-    # write CSV
+    # Write to CSV
     fieldnames = [
         "region",
         "category",
@@ -154,20 +150,19 @@ def main():
         "rating",
         "price",
         "compound",
+        "image_url",
         "type",
         "botanicals",
         "description",
         "tasting_notes",
     ]
-    with open(
-        "livcheers_detailed_p7.csv", "w", newline="", encoding="utf-8"
-    ) as f:
+    with open("livcheers_detailed_p13.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_products)
 
     print(
-        f"\n✅ Done! {len(all_products)} total products saved to livcheers_detailed_p7.csv"
+        f"\n✅ Done! {len(all_products)} products saved to livcheers_detailed_p13.csv"
     )
 
 
